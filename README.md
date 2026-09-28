@@ -62,6 +62,40 @@ The service will:
 
 ---
 
+## 🔄 24/7 Keep-Alive & Watchdog (`watchdog.sh`)
+
+To make sure the forwarder runs continuously 24/7 on a Linux server, VPS, or shared hosting (like **cPanel**), a watchdog script [`watchdog.sh`](file:///Users/amirhossein/Documents/Amozeshyar-Notif/watchdog.sh) is provided.
+
+### Features
+- **Auto-Detection:** Automatically locates the Python environment (`.venv`, cPanel Python Selector, or system Python).
+- **Lock Management:** Uses `lock.file` to prevent multiple concurrent instances.
+- **Auto-Recovery:** If the bot crashes or server reboots, it detects the stale lock and restarts the service automatically.
+- **Unbuffered Logging:** Outputs logs in real-time to `bot.log`.
+
+### Manual Commands
+```bash
+./watchdog.sh start    # Start the bot in background
+./watchdog.sh status   # Check if bot is running
+./watchdog.sh stop     # Stop the running bot
+./watchdog.sh restart  # Restart the bot
+tail -f bot.log        # View live logs
+```
+
+### Setup with Cron (Auto Keep-Alive)
+Add a cron job to check and revive the bot every minute:
+```bash
+crontab -e
+```
+Add the following line (replace `/path/to/Amozeshyar-Notif` with your actual project path):
+```cron
+* * * * * /path/to/Amozeshyar-Notif/watchdog.sh >/dev/null 2>&1
+```
+
+> **Tip for cPanel:** In cPanel → **Cron Jobs**, set the schedule to **Once Per Minute** (`* * * * *`) and enter the command:
+> `/bin/bash /home/YOUR_USERNAME/Amozeshyar-Notif/watchdog.sh >/dev/null 2>&1`
+
+---
+
 ## 📁 Project Structure
 
 ```text
@@ -71,6 +105,7 @@ The service will:
 ├── telegram_sender.py    # Telegram Bot API client and message formatter
 ├── login.py              # Interactive authentication CLI
 ├── main.py               # Long-running daemon listener and forwarder
+├── watchdog.sh           # Keep-alive watchdog script for Cron / 24/7 uptime
 ├── pyproject.toml        # Dependencies managed with uv
 ├── .env.example          # Environment variables template
 └── README.md             # Documentation
