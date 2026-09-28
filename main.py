@@ -74,20 +74,14 @@ class AmoozeshyarForwarder:
             logger.debug(f"Message from other room ({room_id}) ignored.")
             return
 
-        text = room_message.message or ""
-        attachment_name = None
-        attachment_url = None
-
-        if hasattr(room_message, "attachment") and room_message.attachment:
-            att = room_message.attachment
-            attachment_name = att.name if att.name else None
-            attachment_url = att.public_url if att.public_url else None
+        text = (room_message.message or "").strip()
+        if not text:
+            logger.debug("Received empty message text; ignored.")
+            return
 
         logger.info("=" * 50)
         logger.info("📩 New message received from Amoozeshyar bot!")
-        logger.info(f"Content: {text}")
-        if attachment_name:
-            logger.info(f"Attachment: {attachment_name}")
+        logger.info(f"Content:\n{text}")
         logger.info("=" * 50)
 
         # Forward to Telegram
@@ -96,8 +90,6 @@ class AmoozeshyarForwarder:
             sent = await self.telegram.forward_amoozeshyar_message(
                 content=text,
                 sender_username=self.target_username,
-                attachment_name=attachment_name,
-                attachment_url=attachment_url,
             )
             if sent:
                 logger.info("✅ Message forwarded to Telegram successfully.")

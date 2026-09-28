@@ -1,6 +1,7 @@
 import html
 import logging
-from typing import Optional
+import re
+from typing import Any, Dict, Optional
 import httpx
 import jdatetime
 
@@ -19,38 +20,85 @@ class TelegramSender:
         return bool(self.bot_token and self.chat_id)
 
     @staticmethod
+    def extract_otp_code(text: str) -> Optional[str]:
+        """Extract OTP / login code from Amoozeshyar message."""
+        if not text:
+            return None
+
+        # Convert Persian / Arabic digits to standard ASCII digits
+        persian_to_eng = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+        norm_text = text.translate(persian_to_eng)
+
+        # 1. Match 'رمز ورود', 'کد ورود', 'کد تایید', 'رمز یکبار مصرف', etc.
+        match = re.search(
+            r"(?:رمز\s*(?:ورود|یکبار\s*مصرف|موقت)|کد\s*(?:ورود|تایید|تأیید|فعال[\s‌]*سازی))(?:\s+شما)?[\s:]+([0-9]{4,8})",
+            norm_text,
+        )
+        if match:
+            return match.group(1)
+
+        # 2. Fallback: match standalone 5-6 digit code if mentions Amoozeshyar
+        if "آموزشیار" in norm_text:
+            fallback = re.search(r"(?<![:\d])(\d{5,6})(?![:\d])", norm_text)
+            if fallback:
+                return fallback.group(1)
+
+        return None
+
+    @classmethod
     def format_amoozeshyar_message(
+        cls,
         content: str,
-        sender_username: str = "amoozeshbot",
+        code: Optional[str] = None,
+        sender_username: Optional[str] = None,
         attachment_name: Optional[str] = None,
         attachment_url: Optional[str] = None,
     ) -> str:
-        """Format incoming Amoozeshyar iGap message for Telegram."""
+        """Format incoming Amoozeshyar text message for Telegram."""
         now = jdatetime.datetime.now().strftime("%Y/%m/%d - %H:%M:%S")
         escaped_content = html.escape(content.strip()) if content else ""
 
-        blocks = []
-        if escaped_content:
-            blocks.append(escaped_content)
-        elif not attachment_name:
-            blocks.append("<i>[پیام بدون متن]</i>")
+        if not escaped_content:
+            return f"<i>[پیام بدون متن]</i>\n\n🗓 <code>{now}</code>"
 
-        if attachment_name:
-            escaped_att = html.escape(attachment_name)
-            if attachment_url:
-                blocks.append(f"📎 <b>پیوست:</b> <a href=\"{attachment_url}\">{escaped_att}</a>")
-            else:
-                blocks.append(f"📎 <b>پیوست:</b> {escaped_att}")
+        # Highlight code inside message text if detected
+        if code:
+            digits_map = {
+                "0": "[0۰٠]", "1": "[1۱١]", "2": "[2۲٢]", "3": "[3۳٣]", "4": "[4۴٤]",
+                "5": "[5۵٥]", "6": "[6۶٦]", "7": "[7۷٧]", "8": "[8۸٨]", "9": "[9۹٩]",
+            }
+            pattern = "".join(digits_map.get(d, d) for d in code)
+            escaped_content = re.sub(
+                rf"((?:رمز\s*(?:ورود|یکبار\s*مصرف|موقت)|کد\s*(?:ورود|تایید|تأیید|فعال[\s‌]*سازی))(?:\s+شما)?[\s:]+)({pattern})",
+                r"\1<code>\2</code>",
+                escaped_content,
+            )
 
-        footer_elements = [f"🗓 <code>{now}</code>"]
-        if sender_username:
-            footer_elements.append(f"@{sender_username}")
+        footer = f"🗓 <code>{now}</code>"
+        return f"{escaped_content}\n\n{footer}"
 
-        blocks.append(" | ".join(footer_elements))
+    @staticmethod
+    def build_reply_markup(code: str) -> Dict[str, Any]:
+        """Create inline keyboard with glass copy button."""
+        return {
+            "inline_keyboard": [
+                [
+                    {
+                        "text": f"📋 کپی رمز ورود: {code}",
+                        "copy_text": {
+                            "text": code,
+                        },
+                    }
+                ]
+            ]
+        }
 
-        return "\n\n".join(blocks)
-
-    async def send_text(self, text: str, parse_mode: str = "HTML") -> bool:
+    async def send_text(
+        self,
+        text: str,
+        parse_mode: str = "HTML",
+        reply_markup: Optional[Dict[str, Any]] = None,
+    ) -> bool:
         """Send message text to Telegram, splitting long messages if necessary."""
         if not self.is_configured():
             logger.warning("Telegram bot credentials (TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID) are not configured.")
@@ -61,13 +109,17 @@ class TelegramSender:
 
         async with httpx.AsyncClient(timeout=15.0) as client:
             success = True
-            for chunk in chunks:
-                payload = {
+            for idx, chunk in enumerate(chunks):
+                payload: Dict[str, Any] = {
                     "chat_id": self.chat_id,
                     "text": chunk,
                     "parse_mode": parse_mode,
                     "disable_web_page_preview": True,
                 }
+                # Attach inline keyboard button to the last chunk
+                if reply_markup and idx == len(chunks) - 1:
+                    payload["reply_markup"] = reply_markup
+
                 try:
                     resp = await client.post(self.api_url, json=payload)
                     res_json = resp.json()
@@ -75,12 +127,18 @@ class TelegramSender:
                         logger.info("Message successfully delivered to Telegram.")
                     else:
                         logger.error(f"Failed to send message to Telegram: {resp.text}")
-                        # Fallback to plain text if HTML parsing failed
+                        # Fallback: retry without entities or reply_markup if Telegram rejected
+                        retry = False
                         if "can't parse entities" in resp.text:
-                            payload.pop("parse_mode")
+                            payload.pop("parse_mode", None)
+                            retry = True
+                        if "reply_markup" in payload and ("BUTTON_TYPE_INVALID" in resp.text or "copy_text" in resp.text):
+                            payload.pop("reply_markup", None)
+                            retry = True
+                        if retry:
                             retry_resp = await client.post(self.api_url, json=payload)
-                            if retry_resp.status_code == 200:
-                                logger.info("Message delivered to Telegram as plain text.")
+                            if retry_resp.status_code == 200 and retry_resp.json().get("ok"):
+                                logger.info("Message delivered to Telegram after fallback.")
                             else:
                                 success = False
                         else:
@@ -98,11 +156,12 @@ class TelegramSender:
         attachment_name: Optional[str] = None,
         attachment_url: Optional[str] = None,
     ) -> bool:
-        """Format and forward Amoozeshyar message to Telegram."""
+        """Format and forward Amoozeshyar message to Telegram with copy code button."""
+        code = self.extract_otp_code(content)
         formatted = self.format_amoozeshyar_message(
             content=content,
+            code=code,
             sender_username=sender_username,
-            attachment_name=attachment_name,
-            attachment_url=attachment_url,
         )
-        return await self.send_text(formatted, parse_mode="HTML")
+        reply_markup = self.build_reply_markup(code) if code else None
+        return await self.send_text(formatted, parse_mode="HTML", reply_markup=reply_markup)
