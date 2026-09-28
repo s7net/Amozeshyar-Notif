@@ -27,26 +27,28 @@ class TelegramSender:
     ) -> str:
         """Format incoming Amoozeshyar iGap message for Telegram."""
         now = jdatetime.datetime.now().strftime("%Y/%m/%d - %H:%M:%S")
-        escaped_content = html.escape(content.strip())
-        
-        parts = [
-            f"🎓 <b>New Message from Amoozeshyar (@{sender_username})</b>",
-            f"📅 <b>Time:</b> <code>{now}</code>",
-            f"🤖 <b>Source:</b> @{sender_username}",
-            "━━━━━━━━━━━━━━━━━━━━",
-            escaped_content if escaped_content else "<i>[No text - attachment only]</i>",
-        ]
-        
+        escaped_content = html.escape(content.strip()) if content else ""
+
+        blocks = []
+        if escaped_content:
+            blocks.append(escaped_content)
+        elif not attachment_name:
+            blocks.append("<i>[پیام بدون متن]</i>")
+
         if attachment_name:
             escaped_att = html.escape(attachment_name)
             if attachment_url:
-                parts.append(f"\n📎 <b>Attachment:</b> <a href=\"{attachment_url}\">{escaped_att}</a>")
+                blocks.append(f"📎 <b>پیوست:</b> <a href=\"{attachment_url}\">{escaped_att}</a>")
             else:
-                parts.append(f"\n📎 <b>Attachment:</b> {escaped_att}")
+                blocks.append(f"📎 <b>پیوست:</b> {escaped_att}")
 
-        parts.append("━━━━━━━━━━━━━━━━━━━━")
-        parts.append("📡 <i>Amoozeshyar Telegram Forwarder</i>")
-        return "\n".join(parts)
+        footer_elements = [f"🗓 <code>{now}</code>"]
+        if sender_username:
+            footer_elements.append(f"@{sender_username}")
+
+        blocks.append(" | ".join(footer_elements))
+
+        return "\n\n".join(blocks)
 
     async def send_text(self, text: str, parse_mode: str = "HTML") -> bool:
         """Send message text to Telegram, splitting long messages if necessary."""
