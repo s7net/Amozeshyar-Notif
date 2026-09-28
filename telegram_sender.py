@@ -3,7 +3,6 @@ import logging
 import re
 from typing import Any, Dict, Optional
 import httpx
-import jdatetime
 
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 
@@ -50,22 +49,19 @@ class TelegramSender:
         cls,
         content: str,
         code: Optional[str] = None,
-        sender_username: Optional[str] = None,
-        attachment_name: Optional[str] = None,
-        attachment_url: Optional[str] = None,
+        **kwargs: Any,
     ) -> str:
-        """Format incoming Amoozeshyar text message for Telegram."""
-        now = jdatetime.datetime.now().strftime("%Y/%m/%d - %H:%M:%S")
+        """Format incoming Amoozeshyar text message for Telegram (pure message content only)."""
         escaped_content = html.escape(content.strip()) if content else ""
 
         if not escaped_content:
-            return f"<i>[پیام بدون متن]</i>\n\n🗓 <code>{now}</code>"
+            return "<i>[پیام بدون متن]</i>"
 
-        # Highlight code inside message text if detected
+        # Highlight code inside message text if detected so it can be tapped directly
         if code:
             digits_map = {
                 "0": "[0۰٠]", "1": "[1۱١]", "2": "[2۲٢]", "3": "[3۳٣]", "4": "[4۴٤]",
-                "5": "[5۵٥]", "6": "[6۶٦]", "7": "[7۷٧]", "8": "[8۸٨]", "9": "[9۹٩]",
+                "5": "[5۵٥]", "6": "[6۶٦]", "7": "[7۷٧]", "8": "[8٨]", "9": "[9۹٩]",
             }
             pattern = "".join(digits_map.get(d, d) for d in code)
             escaped_content = re.sub(
@@ -74,8 +70,7 @@ class TelegramSender:
                 escaped_content,
             )
 
-        footer = f"🗓 <code>{now}</code>"
-        return f"{escaped_content}\n\n{footer}"
+        return escaped_content
 
     @staticmethod
     def build_reply_markup(code: str) -> Dict[str, Any]:
@@ -84,7 +79,7 @@ class TelegramSender:
             "inline_keyboard": [
                 [
                     {
-                        "text": f"📋 کپی رمز ورود: {code}",
+                        "text": "کپی کد تایید",
                         "copy_text": {
                             "text": code,
                         },
@@ -152,7 +147,7 @@ class TelegramSender:
     async def forward_amoozeshyar_message(
         self,
         content: str,
-        sender_username: str = "amoozeshbot",
+        sender_username: Optional[str] = None,
         attachment_name: Optional[str] = None,
         attachment_url: Optional[str] = None,
     ) -> bool:
@@ -161,7 +156,6 @@ class TelegramSender:
         formatted = self.format_amoozeshyar_message(
             content=content,
             code=code,
-            sender_username=sender_username,
         )
         reply_markup = self.build_reply_markup(code) if code else None
         return await self.send_text(formatted, parse_mode="HTML", reply_markup=reply_markup)

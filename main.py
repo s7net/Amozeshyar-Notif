@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 from config import (
     AMOOZESH_BOT_USERNAME,
+    AMOOZESH_BOT_ID,
     TELEGRAM_BOT_TOKEN,
     TELEGRAM_CHAT_ID,
     load_session,
@@ -27,6 +28,12 @@ class AmoozeshyarForwarder:
         self.telegram = TelegramSender()
         self.client: Optional[IGapClient] = None
         self.target_user_id: Optional[int] = None
+        if AMOOZESH_BOT_ID:
+            try:
+                self.target_user_id = int(AMOOZESH_BOT_ID)
+                logger.info(f"Target Bot ID loaded from .env: {self.target_user_id}")
+            except ValueError:
+                logger.warning(f"Invalid AMOOZESH_BOT_ID in .env: {AMOOZESH_BOT_ID}")
         self.target_room_id: Optional[int] = None
         self.target_username = AMOOZESH_BOT_USERNAME.lower()
         self.is_running = True

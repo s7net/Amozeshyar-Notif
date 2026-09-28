@@ -53,6 +53,9 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 # Target Amoozeshyar bot username in iGap
 AMOOZESH_BOT_USERNAME = os.getenv("AMOOZESH_BOT_USERNAME", "amoozeshbot").strip().lstrip("@")
 
+# Target Amoozeshyar bot numeric ID in iGap (optional)
+AMOOZESH_BOT_ID = os.getenv("AMOOZESH_BOT_ID", "").strip()
+
 
 def load_session() -> dict:
     """Load stored session from session.json or environment variable."""
