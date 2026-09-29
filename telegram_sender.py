@@ -45,28 +45,6 @@ class TelegramSender:
         return None
 
     @classmethod
-    def clean_trailing_metadata(cls, text: str) -> str:
-        """Strip trailing date, time, and calendar emoji lines from end of message."""
-        cleaned = text.strip()
-        while True:
-            prev = cleaned
-            # Remove trailing date line (with or without time/emoji, Persian or English digits)
-            cleaned = re.sub(
-                r"\n\s*(?:🗓️?|\b)?\s*[0-9۰-۹]{4}/[0-9۰-۹]{1,2}/[0-9۰-۹]{1,2}(?:\s*[-–—/]\s*[0-9۰-۹]{1,2}:[0-9۰-۹]{1,2}(?::[0-9۰-۹]{1,2})?)?\s*$",
-                "",
-                cleaned,
-            )
-            # Remove trailing time-only line (e.g. 10:32:56)
-            cleaned = re.sub(
-                r"\n\s*(?:🗓️?|\b)?\s*[0-9۰-۹]{1,2}:[0-9۰-۹]{1,2}(?::[0-9۰-۹]{1,2})?\s*$",
-                "",
-                cleaned,
-            )
-            if cleaned == prev:
-                break
-        return cleaned.strip()
-
-    @classmethod
     def format_amoozeshyar_message(
         cls,
         content: str,
@@ -74,11 +52,7 @@ class TelegramSender:
         **kwargs: Any,
     ) -> str:
         """Format incoming Amoozeshyar text message for Telegram (pure message content only)."""
-        if not content:
-            return "<i>[پیام بدون متن]</i>"
-
-        cleaned_text = cls.clean_trailing_metadata(content)
-        escaped_content = html.escape(cleaned_text)
+        escaped_content = html.escape(content.strip()) if content else ""
 
         if not escaped_content:
             return "<i>[پیام بدون متن]</i>"
